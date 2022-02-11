@@ -69,7 +69,7 @@ class Winbox:
             if not w.check(self.w.lift_x(int.from_bytes(self.client_public, "big"), self.client_public_parity)):
                 self.stage = -1
             self.msg = username.encode('utf-8') + b'\x00'
-            self.msg += self.client_public + self.client_public_parity.to_bytes(1, "big")
+            self.msg += self.client_public + int(self.client_public_parity).to_bytes(1, "big")
             self.msg = len(self.msg).to_bytes(1, "big") + b'\x06' + self.msg
             self.stage = 1
 
@@ -206,7 +206,7 @@ class Winbox:
         return self.resp
 
 if __name__ == "__main__":
-    args = argparse.ArgumentParser()
+    args = argparse.ArgumentParser(description='Winbox Client')
     args.add_argument("-t", "--target", help="target host address", required=True)
     args.add_argument("-u", "--username", help="username", required=True)
     args.add_argument("-p", "--password", help="password", default="")

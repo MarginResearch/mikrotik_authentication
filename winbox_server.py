@@ -128,7 +128,7 @@ class WinboxServer():
         self.client_public = self.client_public[:-1]
         self.server_private = secrets.token_bytes(32)
         self.gen_server_public_key()
-        self.msg = self.server_public + self.server_public_parity.to_bytes(1, "big") + self.salt
+        self.msg = self.server_public + int(self.server_public_parity).to_bytes(1, "big") + self.salt
         self.msg = len(self.msg).to_bytes(1, "big") + b'\x06' + self.msg
         return self.msg
 
@@ -252,10 +252,7 @@ def new_thread(c, addr: tuple):
     s = WinboxServer(addr)
     while True:
         try:
-            b = c.recv(1024)
-            # print_with_lock(b)
-            # print_with_lock(addr)
-            s.resp = b
+            s.resp = c.recv(1024)
             msg = s.process_msg()
         except socket.timeout:
             print_with_lock(addr[0] + ":" + str(addr[1]) + " timeout")
@@ -267,21 +264,8 @@ def new_thread(c, addr: tuple):
             exit(0)
         if msg != b'' and msg != 0: c.send(msg)
 
-    # while select.select([c], [], [], 5)[0]:
-    #     s.resp = c.recv(1024)
-    #     s.process_msg()
-    #     c.send(s.msg)
-            # if msg == -1: 
-            #     print_with_lock(addr[0] + ":" + str(addr[1]) + " terminating connection")
-
-            #     c.close()
-            #     exit(0)
-            # if msg != b'' and msg != 0: c.send(msg)
-        # if fds[1]:
-        #     c.send(s.msg) 
-    
 if __name__ == "__main__":
-    args = argparse.ArgumentParser()
+    args = argparse.ArgumentParser(description='Winbox Server')
     args.add_argument("-a", "--address", help="host address", required=True)
     args.add_argument("-d", "--data", help="user.dat file path", required=True)
     args = vars(args.parse_args())

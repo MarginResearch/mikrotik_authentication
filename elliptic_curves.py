@@ -94,7 +94,7 @@ class WCurve:
     def to_montgomery(self, pt):
         assert type(pt) == ecdsa.ellipticcurve.PointJacobi or type(pt) == ecdsa.ellipticcurve.Point
         x = (pt.x() + self.__conversion) % self.__p
-        return x.to_bytes(32, "big"), pt.y() & 1
+        return int(x).to_bytes(32, "big"), pt.y() & 1
 
     # plots input x value on the Montomgery curve and converts to 
     # Weierstrass affine form 
