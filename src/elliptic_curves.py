@@ -96,8 +96,7 @@ class WCurve:
         x = (pt.x() + self.__conversion) % self.__p
         return int(x).to_bytes(32, "big"), pt.y() & 1
 
-    # plots input x value on the Montomgery curve and converts to 
-    # Weierstrass affine form 
+    # finds point P = (x, y) given x and converts to Weierstrass affine form 
     # returns either the even or odd y coordinate based on the input boolean
     def lift_x(self, x: int, parity: bool):
         x = x % self.__p
@@ -118,7 +117,7 @@ class WCurve:
             return -1
 
     # hashes the input byte string until a valid point is found
-    # plots x on the Montgomery curve and converts to Weierstrass affine form
+    # lifts x on the Montgomery curve and converts to Weierstrass affine form
     # returns the approriate point based on requested parity
     # effectively ECEDP, with an extra hash
     def redp1(self, x: bytes, parity: bool):
@@ -132,7 +131,7 @@ class WCurve:
                 break
         return pt
 
-    # generates private key for password validator point, v
+    # generates private key for password validator input, i
     def gen_password_validator_priv(self, username: str, password: str, salt: bytes):
         assert len(salt) == 0x10, print("salt must be 16 bytes")
         return hashlib.sha256(salt + hashlib.sha256((username + ":" + password).encode("utf-8")).digest()).digest()

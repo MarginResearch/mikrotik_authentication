@@ -10,7 +10,7 @@ This repo contains utilities and proofs of concept (POCs) demonstrating MikroTik
 ### Winbox 
 Simply execute `python3 winbox_server.py -d <path to user.dat> -a <address>` to start a Winbox server. The repo includes an example `user.dat` file for the credentials `admin : ` (password is blank). Connect to the server on port 8291 using the Winbox client program or the Winbox.exe program itself. The multi-threaded server authenticates and prints decrypted messages received from any of the clients. The program also contains a single "mock" response to the first default Winbox.exe request to demonstrate successful encryption and decryption. 
 
-Execute `python3 winbox.py -t <target address> -u <username> [-p <password>]` to demonstrate Winbox client functionality, or leverage the Winbox API to send custom messages to the server. The default password, if omitted, is blank. Below is an example of the client API.
+Execute `python3 winbox.py -a <server address> -u <username> [-p <password>]` to demonstrate Winbox client functionality, or leverage the Winbox API to send custom messages to the server. The default password, if omitted, is blank. Below is an example of the client API.
 
 ```python
 import winbox
@@ -27,7 +27,9 @@ print(resp)
 The MAC Telnet program only functions in client mode and requires a MikroTik host (version 6.45.1+) running on the same subnet to demonstrate functionality. Run `python3 mactelnet.py <mac address> [-u <username> -p <password>]` to authenticate and create a remote RouterOS terminal within the target host. 
 
 ## Elliptic Curves Utilities 
-`elliptic_curves.py` contains cryptographic functions for authentication. It exposes the `WCurve` class which performs elliptic curve calculations and conversions between Montgomery and Weierstrass curves as well as between affine and weighted projective space. [Margin Research’s blog post](https://margin.re/blog/MikroTik-authentication-revealed.aspx) contains a high-level overview of the EC-SRP5 implementation, and this [old, unfinished IEEE submission draft](https://web.archive.org/web/20131228182531/http://grouper.ieee.org/groups/1363/passwdPK/submissions/p1363ecsrp.pdf) is a nearly identical protocol to what is implemented. Similarities to this draft submission are highlighted below:
+`elliptic_curves.py` contains cryptographic functions for authentication. It exposes the `WCurve` class which performs elliptic curve calculations and conversions between Montgomery and Weierstrass curves as well as between affine and weighted projective space. [Margin Research’s blog post](https://margin.re/blog/MikroTik-authentication-revealed.aspx) contains a high-level overview of the EC-SRP5 implementation, and this [old, unfinished IEEE submission draft](https://web.archive.org/web/20131228182531/http://grouper.ieee.org/groups/1363/passwdPK/submissions/p1363ecsrp.pdf) is a nearly identical protocol to what is implemented. Please see [our repo implementing the IEEE submission draft version](https://github.com/MarginResearch/EC-SRP) for more information on that protocol.  
+
+Similarities to this draft submission are highlighted below:
 
 1. `gen_public_key` accepts a private key and returns a public key. This is equivalent to ECPEPKGP-SRP-A. *Note: the private key is multiplied over the Weierstrass curve, but the public key returned is the converted Montgomery form x coordinate*
 2. `lift_x` plots a provided x coordinate on the Weierstrass curve in affine form. This makes up a component of ECEDP and is used in public key generation

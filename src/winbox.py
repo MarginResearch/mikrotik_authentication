@@ -13,17 +13,17 @@ class Winbox:
         self.socket = None
         self.stage = -1
         self.w = elliptic_curves.WCurve()
-        self.client_private = b''
-        self.client_public = b''
-        self.client_public_parity = -1
-        self.server_public = b''
-        self.server_public_parity = -1
-        self.h = b''
-        self.z_input = b''
+        self.s_a = b''
+        self.x_w_a = b''
+        self.x_w_a_parity = -1
+        self.x_w_b = b''
+        self.x_w_b_parity = -1
+        self.j = b''
         self.z = b''
+        self.secret = b''
         self.client_cc = b''
         self.server_cc = b''
-        self.v_private = b''
+        self.i = b''
         self.msg = b''
         self.resp = b''
         self.send_aes_key = b''
@@ -37,18 +37,18 @@ class Winbox:
 
     # effectively ECPESVDP-SRP-A with a small modification of hashing both public keys together for h
     def gen_shared_secret(self, salt):
-        self.v_private = self.w.gen_password_validator_priv(self.username, self.password, salt)
-        v_public, v_parity = self.w.gen_public_key(self.v_private)
-        v = self.w.redp1(v_public, 1) # parity = 1 inverts the y coordinate result
-        server_public_point = self.w.lift_x(int.from_bytes(self.server_public, "big"), self.server_public_parity)
-        server_public_point += v
-        self.h = encryption.get_sha2_digest(self.client_public + self.server_public)
-        vh = int.from_bytes(self.v_private, "big") * int.from_bytes(self.h, "big")
-        vh += int.from_bytes(self.client_private, "big")
-        vh = self.w.finite_field_value(vh) # mod by curve order to ensure the result is a point within the finite field
-        pt = vh * server_public_point
-        self.z_input, ignore = self.w.to_montgomery(pt)
-        self.z = encryption.get_sha2_digest(self.z_input)
+        self.i = self.w.gen_password_validator_priv(self.username, self.password, salt)
+        x_gamma, gamma_parity = self.w.gen_public_key(self.i)
+        v = self.w.redp1(x_gamma, 1) # parity = 1 inverts the y coordinate result
+        w_b = self.w.lift_x(int.from_bytes(self.x_w_b, "big"), self.x_w_b_parity)
+        w_b += v
+        self.j = encryption.get_sha2_digest(self.x_w_a + self.x_w_b)
+        pt = int.from_bytes(self.i, "big") * int.from_bytes(self.j, "big")
+        pt += int.from_bytes(self.s_a, "big")
+        pt = self.w.finite_field_value(pt) # mod by curve order to ensure the result is a point within the finite field
+        pt = pt * w_b
+        self.z, _ = self.w.to_montgomery(pt)
+        self.secret = encryption.get_sha2_digest(self.z)
 
     # performs authentication in linear manner
     # looped to retry if any errors occur
@@ -64,12 +64,12 @@ class Winbox:
 
         # simple ECPEPKGP-SRP-A algorithm to generate public key
         def public_key_exchange():
-            self.client_private = secrets.token_bytes(32)
-            self.client_public, self.client_public_parity = self.w.gen_public_key(self.client_private)
-            if not w.check(self.w.lift_x(int.from_bytes(self.client_public, "big"), self.client_public_parity)):
+            self.s_a = secrets.token_bytes(32)
+            self.x_w_a, self.x_w_a_parity = self.w.gen_public_key(self.s_a)
+            if not w.check(self.w.lift_x(int.from_bytes(self.x_w_a, "big"), self.x_w_a_parity)):
                 self.stage = -1
             self.msg = username.encode('utf-8') + b'\x00'
-            self.msg += self.client_public + int(self.client_public_parity).to_bytes(1, "big")
+            self.msg += self.x_w_a + int(self.x_w_a_parity).to_bytes(1, "big")
             self.msg = len(self.msg).to_bytes(1, "big") + b'\x06' + self.msg
             self.stage = 1
 
@@ -82,16 +82,16 @@ class Winbox:
                 print("Error: challenge response corrupted. Retrying...")
                 self.stage = -1
                 return
-            self.server_public = self.resp[:32]
-            self.server_public_parity = self.resp[32]
+            self.x_w_b = self.resp[:32]
+            self.x_w_b_parity = self.resp[32]
             salt = self.resp[33:]
             if len(salt) != 0x10:
                 print("Error: challenge response corrupted. Retrying...")
                 self.stage = -1
                 return
             self.gen_shared_secret(salt)
-            self.h = encryption.get_sha2_digest(self.client_public + self.server_public)
-            self.client_cc = encryption.get_sha2_digest(self.h + self.z_input)
+            self.j = encryption.get_sha2_digest(self.x_w_a + self.x_w_b)
+            self.client_cc = encryption.get_sha2_digest(self.j + self.z)
             self.msg = len(self.client_cc).to_bytes(1, "big") + b'\x06' + self.client_cc
             self.stage = 2
             
@@ -108,7 +108,7 @@ class Winbox:
             elif self.stage == 1: 
                 confirmation()
             elif self.stage == 2:
-                self.server_cc = encryption.get_sha2_digest(self.h + self.client_cc + self.z_input)
+                self.server_cc = encryption.get_sha2_digest(self.j + self.client_cc + self.z)
                 if self.resp[2:] != self.server_cc:
                     print("Error: mismatched confirmation key. Retrying..")
                     self.stage = -1
@@ -116,7 +116,7 @@ class Winbox:
                     self.stage = 3
             elif self.stage == 3:
                 print("Connection successful")
-                self.send_aes_key, self.receive_aes_key, self.send_hmac_key, self.receive_hmac_key = encryption.gen_stream_keys(False, self.z)
+                self.send_aes_key, self.receive_aes_key, self.send_hmac_key, self.receive_hmac_key = encryption.gen_stream_keys(False, self.secret)
                 break
                     
             if self.msg != b'' and self.socket != None:
@@ -207,11 +207,11 @@ class Winbox:
 
 if __name__ == "__main__":
     args = argparse.ArgumentParser(description='Winbox Client')
-    args.add_argument("-t", "--target", help="target host address", required=True)
+    args.add_argument("-a", "--address", help="Winbox server address", required=True)
     args.add_argument("-u", "--username", help="username", required=True)
     args.add_argument("-p", "--password", help="password", default="")
     args = vars(args.parse_args())
-    w = Winbox(args["target"])
+    w = Winbox(args["address"])
     w.auth(args["username"], args["password"])
     # send test request, which is the deterministic first request issued by Winbox.exe 
     msg = b'M2\x05\x00\xff\x01\x06\x00\xff\t\x01\x07\x00\xff\t\x07\x01\x00\xff\x88\x02\x00\r\x00\x00\x00\x04\x00\x00\x00\x02\x00\xff\x88\x02\x00\x00\x00\x00\x00\x0b\x00\x00\x00'

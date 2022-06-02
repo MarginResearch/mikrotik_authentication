@@ -51,19 +51,19 @@ class WinboxServer():
         self.conn_addr = addr
         self.stage = 0
         self.w = elliptic_curves.WCurve()
-        self.client_public = b''
-        self.client_public_parity = -1
-        self.server_private = b''
-        self.server_public = b''
-        self.server_public_parity = -1
-        self.h = b''
-        self.z_input = b''
+        self.x_w_a = b''
+        self.x_w_a_parity = -1
+        self.s_b = b''
+        self.x_w_b = b''
+        self.x_w_b_parity = -1
+        self.j = b''
         self.z = b''
+        self.secret = b''
         self.client_cc = b''
         self.server_cc = b''
-        self.v_private = b''
-        self.vx = b''
-        self.v_parity = -1
+        self.i = b''
+        self.x_gamma = b''
+        self.gamma_parity = -1
         self.msg = b''
         self.resp = b''
         self.send_aes_key = b''
@@ -100,70 +100,71 @@ class WinboxServer():
                 return self.gen_shared_secret()
             if self.stage == 2:
                 self.receive() # iv + encrypted message 
-                print_with_lock((self.conn_addr[0] + ":" + str(self.conn_addr[1]) + " received decrytped message: ", self.resp))
+                print_with_lock((self.conn_addr[0] + ":" + str(self.conn_addr[1]) + \
+                    " received decrytped message: ", self.resp, "\n"))
                 return self.mock_response()
 
     # performs ECPEPKGP-SRP-B to generate a password-entangled public key
-    def gen_server_public_key(self):
+    def gen_x_w_b_key(self):
         pub = self.w.multiply_by_g(int.from_bytes(self.server_private, "big"))
-        v_point = self.w.redp1(self.vx, 0)
-        pt = v_point + pub
-        self.server_public, self.server_public_parity = self.w.to_montgomery(pt)
+        gamma = self.w.redp1(self.x_gamma, 0)
+        pt = gamma + pub
+        self.x_w_b, self.x_w_b_parity = self.w.to_montgomery(pt)
 
-    # validates the request user exists in user.dat and retrieves associated salt, vx
+    # validates the request user exists in user.dat and retrieves associated salt, x_gamma
     # generates a server public key and formats response
     def public_key_exchange(self):
         nullbyte = self.resp.find(b'\x00')
         self.username = (self.resp[:nullbyte]).decode("utf-8")
-        self.client_public = self.resp[nullbyte + 1:]
+        self.x_w_a = self.resp[nullbyte + 1:]
         if not self.check_username():
             print_with_lock("invalid username")
             return -1
-        if len(self.client_public) != 0x21: 
+        if len(self.x_w_a) != 0x21: 
             print("invalid client public key length")
             return -1
 
         self.stage = 1
-        self.client_public_parity = self.client_public[-1]
-        self.client_public = self.client_public[:-1]
+        self.x_w_a_parity = self.x_w_a[-1]
+        self.x_w_a = self.x_w_a[:-1]
         self.server_private = secrets.token_bytes(32)
-        self.gen_server_public_key()
-        self.msg = self.server_public + int(self.server_public_parity).to_bytes(1, "big") + self.salt
+        self.gen_x_w_b_key()
+        self.msg = self.x_w_b + int(self.x_w_b_parity).to_bytes(1, "big") + self.salt
         self.msg = len(self.msg).to_bytes(1, "big") + b'\x06' + self.msg
         return self.msg
 
-    # check username dictionary for request username and sets salt, vx, v_parity
+    # check username dictionary for request username and sets salt, x_gamma, gamma_parity
     def check_username(self): 
         if self.username in self.users:
-            self.salt, self.vx = self.users[self.username]
-            self.v_parity = self.vx[-1]
-            self.vx = self.vx[:-1]
+            self.salt, self.x_gamma = self.users[self.username]
+            self.gamma_parity = self.x_gamma[-1]
+            self.x_gamma = self.x_gamma[:-1]
             return 1
         return 0
 
     # effectively ECPESVDP-SRP-B with a small modification of hashing both public keys together for h
     def gen_shared_secret(self):
-        self.v_private = self.w.gen_password_validator_priv(self.username, self.password, self.salt)
-        v_public, v_parity = self.w.gen_public_key(self.v_private)
-        if self.vx != v_public: 
-            print("error calculating password validator") 
+        self.i = self.w.gen_password_validator_priv(self.username, self.password, self.salt)
+        x_gamma, gamma_parity = self.w.gen_public_key(self.i)
+        if self.x_gamma != x_gamma: 
+            print("error calculating password validator input") 
             return -1
-        self.h = encryption.get_sha2_digest(self.client_public + self.server_public)
-        v_point = self.w.lift_x(int.from_bytes(v_public, "big"), 1)
-        v_point *= int.from_bytes(self.h, "big")
-        client_public_point = self.w.lift_x(int.from_bytes(self.client_public, "big"), self.client_public_parity)
-        pt = v_point + client_public_point
+        self.j = encryption.get_sha2_digest(self.x_w_a + self.x_w_b)
+        gamma = self.w.lift_x(int.from_bytes(x_gamma, "big"), 1)
+        gamma *= int.from_bytes(self.j, "big")
+        w_a = self.w.lift_x(int.from_bytes(self.x_w_a, "big"), self.x_w_a_parity)
+        pt = gamma + w_a
         pt *= int.from_bytes(self.server_private, "big")
-        self.z_input = self.w.to_montgomery(pt)[0]
-        self.z = encryption.get_sha2_digest(self.z_input)
-        cc = encryption.get_sha2_digest(self.h + self.z_input)
+        self.z = self.w.to_montgomery(pt)[0]
+        self.secret = encryption.get_sha2_digest(self.z)
+        cc = encryption.get_sha2_digest(self.j + self.z)
         if cc != self.client_cc:
             print_with_lock("invalid client cc, check username and password")
             return -1
         print_with_lock(self.conn_addr[0] + ":" + str(self.conn_addr[1]) + " login successful")
         self.stage = 2
-        self.send_aes_key, self.receive_aes_key, self.send_hmac_key, self.receive_hmac_key = encryption.gen_stream_keys(True, self.z)
-        self.server_cc = encryption.get_sha2_digest(self.h + self.client_cc + self.z_input)
+        self.send_aes_key, self.receive_aes_key, self.send_hmac_key, self.receive_hmac_key = encryption.gen_stream_keys(True, self.secret)
+        self.server_cc = encryption.get_sha2_digest(self.j + self.client_cc + self.z)
         self.msg = len(self.server_cc).to_bytes(1, "big") + b'\x06' + self.server_cc
         return self.msg
 
