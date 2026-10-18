@@ -23,6 +23,26 @@ print("Received response: ")
 print(resp)
 ```
 
+### MAC Winbox (Layer 2)
+As an extension to the original project, this repo includes a PoC for MAC Winbox, which communicates entirely over Layer 2 UDP broadcast on port 20561. It allows interacting with the router without an IP address. 
+
+Execute `python3 mac_winbox_server.py -m <server mac> -d <path to user.dat>` to start the MAC Winbox server. The server handles the 22-byte custom MAC header and the byte-counter ACK mechanism required for UDP reliability. It serves the same `user.dat` file.
+
+Execute `python3 mac_winbox.py -a <target mac address> -u <username> [-p <password>]` to connect to a real RouterOS device or the local mock server. The client automatically detects the local interface MAC address. Below is an example of the client API.
+
+```python
+import mac_winbox
+
+w = mac_winbox.MacWinbox('AA:BB:CC:DD:EE:FF')
+w.auth('admin', '')
+msg = b'M2\x05\x00\xff\x01\x06\x00\xff\t\x01\x07\x00\xff\t\x07\x01\x00\xff\x88\x02\x00\r\x00\x00\x00\x04\x00\x00\x00\x02\x00\xff\x88\x02\x00\x00\x00\x00\x00\x0b\x00\x00\x00'
+resp = w.send(msg)
+print("Received response: ")
+print(resp)
+```
+
+*Note: Since this is a PoC, extreme edge cases like packet loss during the cryptographic handshake might cause the client to time out and require a re-run. It is intended to demonstrate the L2 communication and decryption rather than act as a production-hardened daemon.*
+
 ### MAC Telnet 
 The MAC Telnet program only functions in client mode and requires a MikroTik host (version 6.45.1+) running on the same subnet to demonstrate functionality. Run `python3 mactelnet.py <mac address> [-u <username> -p <password>]` to authenticate and create a remote RouterOS terminal within the target host. 
 
@@ -38,4 +58,4 @@ Similarities to this draft submission are highlighted below:
 ## Encryption Utilities 
 `encryption.py` imports required cryptographic classes and calculates encryption and authentication keys.  RouterOS employs Mac-then-Encrypt for all messages and uses HMAC and AES-CBC. It also uses unique send and receive ciphers. Both Winbox and MAC Telnet POCs demonstrate successful encryption and decryption. *Note: the AES-CBC implementation uses a modified padding that is similar to PKCS-7. Instead of padding `n` bytes with character `n`, the padding is `n` bytes of character `n-1`*
 
-It is worth mentioning that Winbox fragments the source message - after computing the authentication hash and encrypting - if longer than `0xff`. Both Winbox client and server scripts reassemble fragmented messages. 
+It is worth mentioning that Winbox fragments the source message - after computing the authentication hash and encrypting - if longer than `0xff`. Both Winbox client and server scripts reassemble fragmented messages.
